@@ -6,7 +6,7 @@
 <style>
 body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#222;font-family:Arial}
 .board{display:grid;grid-template-columns:repeat(8,64px);grid-template-rows:repeat(8,64px);border:4px solid #000}
-.cell{display:flex;justify-content:center;align-items:center;font-size:40px;cursor:pointer;user-select:none;position:relative}
+.cell{display:flex;justify-content:center;align-items:center;cursor:pointer;user-select:none;position:relative}
 .white{background:#f0d9b5}
 .black{background:#b58863}
 .selected{outline:3px solid red}
@@ -14,114 +14,139 @@ body{margin:0;display:flex;flex-direction:column;align-items:center;justify-cont
 .turn,.msg{color:#fff;margin:6px}
 button{margin-top:8px;padding:6px 14px;font-size:14px;cursor:pointer}
 .log{color:#ddd;max-height:140px;overflow:auto;font-size:13px;margin-top:6px;width:520px}
+img{width:48px;height:48px;pointer-events:none}
 </style>
 </head>
 <body>
+
 <div class="turn" id="turn"></div>
 <div class="msg" id="msg"></div>
 <div class="board" id="board"></div>
 <button onclick="resetGame()">Reiniciar partida</button>
 <div class="log" id="log"></div>
+
 <script>
-/* ================= ESTADO ================= */
 const boardEl=document.getElementById('board');
 const turnEl=document.getElementById('turn');
 const msgEl=document.getElementById('msg');
 const logEl=document.getElementById('log');
 
 const pieces={
-  p:"peao1.png",
-  r:"torre1.png",
-  n:"cavalo1.png",
-  b:"bispo1.png",
-  q:"rainha1.png",
-  k:"rei1.png",
-
-  P:"peao2.png",
-  R:"torre2.png",
-  N:"cavalo2.png",
-  B:"bispo2.png",
-  Q:"rainha2.png",
-  K:"rei2.png"
+  p:"peao1.png", r:"torre1.png", n:"cavalo1.png", b:"bispo1.png", q:"rainha1.png", k:"rei1.png",
+  P:"peao2.png", R:"torre2.png", N:"cavalo2.png", B:"bispo2.png", Q:"rainha2.png", K:"rei2.png"
 };
+
 const initialState=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"];
-let state=[];
-let turn='white';
-let selected=null;
-let lastMove=null;
-let gameOver=false;
-let moved={K:false,k:false,Ra:false,Rh:false,ra:false,rh:false};
+let state=[], turn='white', selected=null, lastMove=null, gameOver=false;
 
 const isWhite=p=>p>='A'&&p<='Z';
 const cloneState=s=>s.map(r=>r);
 
-/* ================= UTIL ================= */
-function findKing(s,isW){for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(s[r][c]===(isW?'K':'k'))return{r,c};return null;}
+function draw(){
+  boardEl.innerHTML='';
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const cell=document.createElement('div');
+      cell.className='cell '+(((r+c)%2===0)?'white':'black');
+      cell.dataset.r=r;
+      cell.dataset.c=c;
 
-function pathClear(s,fr,fc,tr,tc){const dr=Math.sign(tr-fr),dc=Math.sign(tc-fc);let r=fr+dr,c=fc+dc;while(r!==tr||c!==tc){if(s[r][c]!=='.')return false;r+=dr;c+=dc;}return true;}
+      const p=state[r][c];
+      if(p!=='.'){
+        const img=document.createElement('img');
+        img.src=pieces[p];
+        cell.appendChild(img);
+      }
 
-function inCheck(s,isW){const k=findKing(s,isW);if(!k)return true;for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=s[r][c];if(p!=='.'&&isWhite(p)!==isW){if(validMove(s,p,r,c,k.r,k.c,true))return true;}}return false;}
-
-function hasLegalMoves(isW){for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=state[r][c];if(p!=='.'&&isWhite(p)===isW){for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){if(validMove(state,p,r,c,tr,tc)){
- const cp=cloneState(state);makeMove(cp,fr=r,fc=c,tr,tc,true);if(!inCheck(cp,isW))return true;}}}}return false;}
-
-/* ================= RENDER ================= */
-function draw(){boardEl.innerHTML='';for(let r=0;r<8;r++)for(let c=0;c<8;c++){const cell=document.createElement('div');cell.className='cell '+(((r+c)%2===0)?'white':'black');cell.dataset.r=r;cell.dataset.c=c;const p=state[r][c];if(p!=='.')cell.textContent=pieces[p];if(p==='K'&&inCheck(state,true))cell.style.background='#e57373';if(p==='k'&&inCheck(state,false))cell.style.background='#e57373';cell.onclick=()=>onClick(cell);boardEl.appendChild(cell);}turnEl.textContent=gameOver?'Partida encerrada':'Vez: '+(turn==='white'?'Brancas':'Pretas');}
-
-function clearHints(){document.querySelectorAll('.hint').forEach(c=>c.classList.remove('hint'));}
-
-/* ================= INTERAÇÃO ================= */
-function onClick(cell){if(turn!=='white'||gameOver)return;const r=+cell.dataset.r,c=+cell.dataset.c,p=state[r][c];
- if(selected){const fr=+selected.dataset.r,fc=+selected.dataset.c;if(validMove(state,state[fr][fc],fr,fc,r,c)){
-  makeMove(state,fr,fc,r,c);selected.classList.remove('selected');selected=null;clearHints();postMove();return;}
-  selected.classList.remove('selected');selected=null;clearHints();}
- if(p!=='.'&&isWhite(p)){selected=cell;cell.classList.add('selected');showMoves(r,c,p);} }
-
-function showMoves(r,c,p){for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){if(validMove(state,p,r,c,tr,tc))boardEl.children[tr*8+tc].classList.add('hint');}}
-
-/* ================= MOVIMENTO ================= */
-function makeMove(s,fr,fc,tr,tc,sim=false){const p=s[fr][fc];
- // en passant
- if(p.toLowerCase()==='p'&&fc!==tc&&s[tr][tc]==='.'&&lastMove){s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);s[lastMove.tr]=s[lastMove.tr].substring(0,tc)+'.'+s[lastMove.tr].substring(tc+1);s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);}
- // roque
- else if(p.toLowerCase()==='k'&&Math.abs(tc-fc)===2){s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);if(tc>fc){const rook=s[fr][7];s[fr]=s[fr].substring(0,7)+'.'+s[fr].substring(8);s[fr]=s[fr].substring(0,tc-1)+rook+s[fr].substring(tc);}else{const rook=s[fr][0];s[fr]=s[fr].substring(0,0)+'.'+s[fr].substring(1);s[fr]=s[fr].substring(0,tc+1)+rook+s[fr].substring(tc+2);} }
- else{s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);} 
- if(!sim){lastMove={p,fr,fc,tr,tc};logEl.innerHTML+=`${p}${String.fromCharCode(97+fc)}${8-fr} → ${String.fromCharCode(97+tc)}${8-tr}<br>`;}
+      cell.onclick=()=>onClick(cell);
+      boardEl.appendChild(cell);
+    }
+  }
+  turnEl.textContent=gameOver?'Partida encerrada':'Vez: '+(turn==='white'?'Brancas':'Pretas');
 }
 
-function postMove(){checkGameState();if(!gameOver){turn='black';draw();setTimeout(aiMove,300);} }
+function onClick(cell){
+  if(turn!=='white'||gameOver)return;
+  const r=+cell.dataset.r,c=+cell.dataset.c,p=state[r][c];
 
-/* ================= IA ================= */
-function aiMove(){if(gameOver)return;let moves=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=state[r][c];if(p!=='.'&&!isWhite(p))for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++)if(validMove(state,p,r,c,tr,tc)){const cp=cloneState(state);makeMove(cp,r,c,tr,tc,true);if(!inCheck(cp,false))moves.push({r,c,tr,tc});}}
- if(!moves.length){gameOver=true;msgEl.textContent='Xeque-mate! Brancas vencem.';draw();return;}
- const m=moves[Math.floor(Math.random()*moves.length)];makeMove(state,m.r,m.c,m.tr,m.tc);checkGameState();turn='white';draw();}
+  if(selected){
+    const fr=+selected.dataset.r,fc=+selected.dataset.c;
+    if(validMove(state,state[fr][fc],fr,fc,r,c)){
+      makeMove(state,fr,fc,r,c);
+      selected.classList.remove('selected');
+      selected=null;
+      draw();
+      turn='black';
+      setTimeout(aiMove,300);
+      return;
+    }
+    selected.classList.remove('selected');
+    selected=null;
+  }
 
-/* ================= REGRAS ================= */
-function validMove(s,p,fr,fc,tr,tc,attack=false){if(fr===tr&&fc===tc)return false;const dr=tr-fr,dc=tc-fc;const t=s[tr][tc];if(!attack&&t!=='.'&&isWhite(t)===isWhite(p))return false;
- switch(p.toLowerCase()){
-  case 'p':{const d=isWhite(p)?-1:1;
-   if(dc===0&&t==='.'&&dr===d)return true;
-   if(dc===0&&t==='.'&&dr===2*d&&((isWhite(p)&&fr===6)||(!isWhite(p)&&fr===1))&&s[fr+d][fc]==='.')return true;
-   if(Math.abs(dc)===1&&dr===d&&(t!=='.'||(lastMove&&lastMove.p.toLowerCase()==='p'&&Math.abs(lastMove.tr-lastMove.fr)===2&&lastMove.tr===fr&&lastMove.tc===tc)))return true;
-   return false;}
-  case 'r':return (dr===0||dc===0)&&pathClear(s,fr,fc,tr,tc);
-  case 'b':return Math.abs(dr)===Math.abs(dc)&&pathClear(s,fr,fc,tr,tc);
-  case 'q':return (dr===0||dc===0||Math.abs(dr)===Math.abs(dc))&&pathClear(s,fr,fc,tr,tc);
-  case 'n':return (Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2);
-  case 'k':{
-   if(Math.abs(dr)<=1&&Math.abs(dc)<=1)return true;
-   if(!attack&&dr===0&&Math.abs(dc)===2&&!inCheck(s,isWhite(p))){
-    if(dc>0&&!moved[p]&&!moved[isWhite(p)?'Rh':'rh']&&pathClear(s,fr,fc,tr,7))return true;
-    if(dc<0&&!moved[p]&&!moved[isWhite(p)?'Ra':'ra']&&pathClear(s,fr,0,tr,fc))return true;}
-   return false;}
- }
- return false;}
+  if(p!=='.'&&isWhite(p)){
+    selected=cell;
+    cell.classList.add('selected');
+  }
+}
 
-function checkGameState(){if(inCheck(state,false)){if(!hasLegalMoves(false)){gameOver=true;msgEl.textContent='Xeque-mate! Brancas vencem.';}else msgEl.textContent='Xeque nas pretas!';return;}if(!hasLegalMoves(false)){gameOver=true;msgEl.textContent='Empate por afogamento.';}}
+function makeMove(s,fr,fc,tr,tc){
+  const p=s[fr][fc];
+  s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);
+  s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);
+}
 
-function resetGame(){state=cloneState(initialState);turn='white';selected=null;lastMove=null;gameOver=false;logEl.innerHTML='';msgEl.textContent='';draw();}
+function validMove(s,p,fr,fc,tr,tc){
+  if(fr===tr&&fc===tc)return false;
+  const t=s[tr][tc];
+  if(t!=='.'&&isWhite(t)===isWhite(p))return false;
+
+  const dr=tr-fr, dc=tc-fc;
+
+  switch(p.toLowerCase()){
+    case 'p':{
+      const d=isWhite(p)?-1:1;
+      if(dc===0&&t==='.'&&dr===d)return true;
+      if(dc===0&&t==='.'&&dr===2*d&&((isWhite(p)&&fr===6)||(!isWhite(p)&&fr===1)))return true;
+      if(Math.abs(dc)===1&&dr===d&&t!=='.')return true;
+      return false;
+    }
+    case 'r': return dr===0||dc===0;
+    case 'n': return (Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2);
+    case 'b': return Math.abs(dr)===Math.abs(dc);
+    case 'q': return dr===0||dc===0||Math.abs(dr)===Math.abs(dc);
+    case 'k': return Math.abs(dr)<=1&&Math.abs(dc)<=1;
+  }
+  return false;
+}
+
+function aiMove(){
+  let moves=[];
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const p=state[r][c];
+    if(p!=='.'&&!isWhite(p)){
+      for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
+        if(validMove(state,p,r,c,tr,tc))moves.push({r,c,tr,tc});
+      }
+    }
+  }
+  if(!moves.length)return;
+  const m=moves[Math.floor(Math.random()*moves.length)];
+  makeMove(state,m.r,m.c,m.tr,m.tc);
+  turn='white';
+  draw();
+}
+
+function resetGame(){
+  state=cloneState(initialState);
+  turn='white';
+  selected=null;
+  gameOver=false;
+  draw();
+}
 
 resetGame();
 </script>
 </body>
 </html>
+
