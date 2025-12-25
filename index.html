@@ -66,8 +66,8 @@ function hasLegalMoves(isW){for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=sta
     if(p !== '.'){
       const img = document.createElement('img');
       img.src = pieces[p];
-      img.style.width = '48px';
-      img.style.height = '48px';
+      img.style.width = '56px';
+      img.style.height = '56px';
       img.draggable = false;
       cell.appendChild(img);
     }
@@ -99,9 +99,40 @@ function makeMove(s,fr,fc,tr,tc,sim=false){const p=s[fr][fc];
 function postMove(){checkGameState();if(!gameOver){turn='black';draw();setTimeout(aiMove,300);} }
 
 /* ================= IA ================= */
-function aiMove(){if(gameOver)return;let moves=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=state[r][c];if(p!=='.'&&!isWhite(p))for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++)if(validMove(state,p,r,c,tr,tc)){const cp=cloneState(state);makeMove(cp,r,c,tr,tc,true);if(!inCheck(cp,false))moves.push({r,c,tr,tc});}}
- if(!moves.length){gameOver=true;msgEl.textContent='Xeque-mate! Brancas vencem.';draw();return;}
- const m=moves[Math.floor(Math.random()*moves.length)];makeMove(state,m.r,m.c,m.tr,m.tc);checkGameState();turn='white';draw();}
+function aiMove(){
+ if(gameOver) return;
+ let moves=[];
+ const values={p:1,n:3,b:3,r:5,q:9,k:1000};
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  const p=state[r][c];
+  if(p!=='.'&&!isWhite(p)){
+   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
+    if(validMove(state,p,r,c,tr,tc)){
+     const cp=cloneState(state);
+     makeMove(cp,r,c,tr,tc,true);
+     if(inCheck(cp,false)) continue;
+     let score=Math.random();
+     const target=state[tr][tc];
+     if(target!=='.') score+=values[target.toLowerCase()]*10;
+     if(inCheck(cp,true)) score+=5;
+     moves.push({r,c,tr,tc,score});
+    }
+   }
+  }
+ }
+ if(!moves.length){
+  gameOver=true;
+  msgEl.textContent='Xeque-mate! Brancas vencem.';
+  draw();
+  return;
+ }
+ moves.sort((a,b)=>b.score-a.score);
+ const m=moves[0];
+ makeMove(state,m.r,m.c,m.tr,m.tc);
+ checkGameState(true);
+ turn='white';
+ draw();
+}
 
 /* ================= REGRAS ================= */
 function validMove(s,p,fr,fc,tr,tc,attack=false){if(fr===tr&&fc===tc)return false;const dr=tr-fr,dc=tc-fc;const t=s[tr][tc];if(!attack&&t!=='.'&&isWhite(t)===isWhite(p))return false;
@@ -132,5 +163,3 @@ resetGame();
 </script>
 </body>
 </html>
-
-
