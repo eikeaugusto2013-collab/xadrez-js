@@ -10,7 +10,19 @@ body{margin:0;display:flex;flex-direction:column;align-items:center;justify-cont
 .white{background:#f0d9b5}
 .black{background:#b58863}
 .selected{outline:3px solid red}
-.hint::after{content:"";width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.35);position:absolute}
+.hint::after{
+  content:"";
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:rgba(0,0,0,.45);
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:2;
+}
 .turn,.msg{color:#fff;margin:6px}
 button{margin-top:8px;padding:6px 14px;font-size:14px;cursor:pointer}
 .log{color:#ddd;max-height:140px;overflow:auto;font-size:13px;margin-top:6px;width:520px}
@@ -84,7 +96,18 @@ function onClick(cell){if(turn!=='white'||gameOver)return;const r=+cell.dataset.
   selected.classList.remove('selected');selected=null;clearHints();}
  if(p!=='.'&&isWhite(p)){selected=cell;cell.classList.add('selected');showMoves(r,c,p);} }
 
-function showMoves(r,c,p){for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){if(validMove(state,p,r,c,tr,tc))boardEl.children[tr*8+tc].classList.add('hint');}}
+function showMoves(r,c,p){
+ clearHints();
+ for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
+  if(validMove(state,p,r,c,tr,tc)){
+   const cp=cloneState(state);
+   makeMove(cp,r,c,tr,tc,true);
+   if(!inCheck(cp,true)){
+    boardEl.children[tr*8+tc].classList.add('hint');
+   }
+  }
+ }
+}}
 
 /* ================= MOVIMENTO ================= */
 function makeMove(s,fr,fc,tr,tc,sim=false){const p=s[fr][fc];
