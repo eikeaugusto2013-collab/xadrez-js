@@ -1,221 +1,225 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8" />
-<title>Xadrez Completo</title>
+<meta charset="UTF-8">
+<title>Xadrez IA Avançada</title>
+
 <style>
-body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#222;font-family:Arial}
-.board{display:grid;grid-template-columns:repeat(8,64px);grid-template-rows:repeat(8,64px);border:4px solid #000}
-.cell{display:flex;justify-content:center;align-items:center;font-size:40px;cursor:pointer;user-select:none;position:relative}
+body{
+  background:#222;color:#fff;font-family:Arial;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;min-height:100vh
+}
+.board{
+  display:grid;
+  grid-template-columns:repeat(8,64px);
+  grid-template-rows:repeat(8,64px);
+  border:4px solid #000
+}
+.cell{
+  width:64px;height:64px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;cursor:pointer
+}
 .white{background:#f0d9b5}
 .black{background:#b58863}
+.cell img{width:52px;height:52px;pointer-events:none}
 .selected{outline:3px solid red}
 .hint::after{
-  content:"";
-  width:18px;
-  height:18px;
-  border-radius:50%;
-  background:rgba(0,0,0,.45);
-  position:absolute;
-  top:50%;
-  left:50%;
-  transform:translate(-50%,-50%);
-  pointer-events:none;
-  z-index:2;
+  content:"";width:16px;height:16px;border-radius:50%;
+  background:rgba(0,0,0,.35);position:absolute
 }
-.turn,.msg{color:#fff;margin:6px}
-button{margin-top:8px;padding:6px 14px;font-size:14px;cursor:pointer}
-.log{color:#ddd;max-height:140px;overflow:auto;font-size:13px;margin-top:6px;width:520px}
+.msg{margin:8px;font-size:18px}
+button{margin-top:8px;padding:6px 14px}
 </style>
 </head>
+
 <body>
-<div class="turn" id="turn"></div>
 <div class="msg" id="msg"></div>
 <div class="board" id="board"></div>
-<button onclick="resetGame()">Reiniciar partida</button>
-<div class="log" id="log"></div>
+<button onclick="resetGame()">Reiniciar</button>
+
 <script>
-/* ================= ESTADO ================= */
-const boardEl=document.getElementById('board');
-const turnEl=document.getElementById('turn');
-const msgEl=document.getElementById('msg');
-const logEl=document.getElementById('log');
-
-const pieces={
-  p:"peao1.png",
-  r:"torre1.png",
-  n:"cavalo1.png",
-  b:"bispo1.png",
-  q:"rainha1.png",
-  k:"rei1.png",
-
-  P:"peao2.png",
-  R:"torre2.png",
-  N:"cavalo2.png",
-  B:"bispo2.png",
-  Q:"rainha2.png",
-  K:"rei2.png"
+/* ================= CONFIG ================= */
+const images={
+ p:"peao1.png", r:"torre1.png", n:"cavalo1.png",
+ b:"bispo1.png", q:"rainha1.png", k:"rei1.png",
+ P:"peao2.png", R:"torre2.png", N:"cavalo2.png",
+ B:"bispo2.png", Q:"rainha2.png", K:"rei2.png"
 };
-const initialState=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"];
-let state=[];
-let turn='white';
-let selected=null;
-let lastMove=null;
-let gameOver=false;
-let moved={K:false,k:false,Ra:false,Rh:false,ra:false,rh:false};
 
-const isWhite=p=>p>='A'&&p<='Z';
-const cloneState=s=>s.map(r=>r);
+const initial=[
+"rnbqkbnr","pppppppp","........","........",
+"........","........","PPPPPPPP","RNBQKBNR"
+].map(r=>r.split(""));
 
-/* ================= UTIL ================= */
-function findKing(s,isW){for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(s[r][c]===(isW?'K':'k'))return{r,c};return null;}
+let board,turn,selected,lastMove,gameOver;
+const boardEl=document.getElementById("board");
+const msgEl=document.getElementById("msg");
+const isWhite=p=>p>="A"&&p<="Z";
 
-function pathClear(s,fr,fc,tr,tc){const dr=Math.sign(tr-fr),dc=Math.sign(tc-fc);let r=fr+dr,c=fc+dc;while(r!==tr||c!==tc){if(s[r][c]!=='.')return false;r+=dr;c+=dc;}return true;}
-
-function inCheck(s,isW){const k=findKing(s,isW);if(!k)return true;for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=s[r][c];if(p!=='.'&&isWhite(p)!==isW){if(validMove(s,p,r,c,k.r,k.c,true))return true;}}return false;}
-
-function hasLegalMoves(isW){for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=state[r][c];
-    if(p !== '.'){
-      const img = document.createElement('img');
-      img.src = pieces[p];
-      img.style.width = '56px';
-      img.style.height = '56px';
-      img.draggable = false;
-      cell.appendChild(img);
-    }
-
-    if(p==='K'&&inCheck(state,true))cell.style.background='#e57373';
-    if(p==='k'&&inCheck(state,false))cell.style.background='#e57373';cell.onclick=()=>onClick(cell);boardEl.appendChild(cell);}turnEl.textContent=gameOver?'Partida encerrada':'Vez: '+(turn==='white'?'Brancas':'Pretas');}
-
-function clearHints(){document.querySelectorAll('.hint').forEach(c=>c.classList.remove('hint'));}
-
-/* ================= INTERAÇÃO ================= */
-function onClick(cell){if(turn!=='white'||gameOver)return;const r=+cell.dataset.r,c=+cell.dataset.c,p=state[r][c];
- if(selected){const fr=+selected.dataset.r,fc=+selected.dataset.c;if(validMove(state,state[fr][fc],fr,fc,r,c)){
-  makeMove(state,fr,fc,r,c);selected.classList.remove('selected');selected=null;clearHints();postMove();return;}
-  selected.classList.remove('selected');selected=null;clearHints();}
- if(p!=='.'&&isWhite(p)){selected=cell;cell.classList.add('selected');showMoves(r,c,p);} }
-
-function showMoves(r,c,p){
- clearHints();
- for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
-  if(validMove(state,p,r,c,tr,tc)){
-   const cp=cloneState(state);
-   makeMove(cp,r,c,tr,tc,true);
-   if(!inCheck(cp,true)){
-    boardEl.children[tr*8+tc].classList.add('hint');
-   }
-  }
- }
-}}
-
-/* ================= MOVIMENTO ================= */
-function makeMove(s,fr,fc,tr,tc,sim=false){const p=s[fr][fc];
- // en passant
- if(p.toLowerCase()==='p'&&fc!==tc&&s[tr][tc]==='.'&&lastMove){s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);s[lastMove.tr]=s[lastMove.tr].substring(0,tc)+'.'+s[lastMove.tr].substring(tc+1);s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);}
- // roque
- else if(p.toLowerCase()==='k'&&Math.abs(tc-fc)===2){s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);if(tc>fc){const rook=s[fr][7];s[fr]=s[fr].substring(0,7)+'.'+s[fr].substring(8);s[fr]=s[fr].substring(0,tc-1)+rook+s[fr].substring(tc);}else{const rook=s[fr][0];s[fr]=s[fr].substring(0,0)+'.'+s[fr].substring(1);s[fr]=s[fr].substring(0,tc+1)+rook+s[fr].substring(tc+2);} }
- else{s[fr]=s[fr].substring(0,fc)+'.'+s[fr].substring(fc+1);s[tr]=s[tr].substring(0,tc)+p+s[tr].substring(tc+1);} 
- if(!sim){lastMove={p,fr,fc,tr,tc};logEl.innerHTML+=`${p}${String.fromCharCode(97+fc)}${8-fr} → ${String.fromCharCode(97+tc)}${8-tr}<br>`;}
+/* ================= INIT ================= */
+function resetGame(){
+ board=initial.map(r=>r.slice());
+ turn="white";selected=null;lastMove=null;gameOver=false;
+ msgEl.textContent="";draw();
 }
 
-function postMove(){checkGameState();if(!gameOver){turn='black';draw();setTimeout(aiMove,300);} }
-
-/* ================= IA ================= */
-/* ================= MINIMAX ================= */
-function evaluateBoard(s){
- const values={p:1,n:3,b:3,r:5,q:9,k:1000};
- let score=0;
+/* ================= DRAW ================= */
+function draw(){
+ boardEl.innerHTML="";
  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-  const p=s[r][c];
-  if(p!=='.'){
-   const v=values[p.toLowerCase()];
-   score+=isWhite(p)?v:-v;
+  const cell=document.createElement("div");
+  cell.className="cell "+((r+c)%2?"black":"white");
+  cell.dataset.r=r;cell.dataset.c=c;
+  const p=board[r][c];
+  if(p!="."){
+   const img=document.createElement("img");
+   img.src=images[p];cell.appendChild(img);
   }
- }
- return score;
-}
-
-function getAllMoves(s,isW){
- let moves=[];
- for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-  const p=s[r][c];
-  if(p!=='.'&&isWhite(p)===isW){
-   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
-    if(validMove(s,p,r,c,tr,tc)){
-     const cp=cloneState(s);
-     makeMove(cp,r,c,tr,tc,true);
-     if(!inCheck(cp,isW)) moves.push({r,c,tr,tc});
-    }
-   }
-  }
- }
- return moves;
-}
-
-function minimax(s,depth,maximizing){
- if(depth===0) return evaluateBoard(s);
- if(maximizing){
-  let max=-Infinity;
-  for(const m of getAllMoves(s,true)){
-   const cp=cloneState(s);
-   makeMove(cp,m.r,m.c,m.tr,m.tc,true);
-   max=Math.max(max,minimax(cp,depth-1,false));
-  }
-  return max;
- } else {
-  let min=Infinity;
-  for(const m of getAllMoves(s,false)){
-   const cp=cloneState(s);
-   makeMove(cp,m.r,m.c,m.tr,m.tc,true);
-   min=Math.min(min,minimax(cp,depth-1,true));
-  }
-  return min;
+  cell.onclick=()=>clickCell(cell);
+  boardEl.appendChild(cell);
  }
 }
 
-function aiMove(){
- if(gameOver) return;
- let bestMove=null;
- let bestScore=Infinity;
- for(const m of getAllMoves(state,false)){
-  const cp=cloneState(state);
-  makeMove(cp,m.r,m.c,m.tr,m.tc,true);
-  const score=minimax(cp,2,true);
-  if(score<bestScore){bestScore=score;bestMove=m;}
+/* ================= CLICK ================= */
+function clickCell(cell){
+ if(gameOver||turn!=="white")return;
+ const r=+cell.dataset.r,c=+cell.dataset.c;
+ const p=board[r][c];
+
+ if(selected){
+  const {r:fr,c:fc}=selected;
+  if(isValidMove(board,board[fr][fc],fr,fc,r,c)){
+   makeMove(board,fr,fc,r,c,true);
+   clearSelection();postMove();return;
+  }
+  clearSelection();
  }
- if(!bestMove){gameOver=true;msgEl.textContent='Xeque-mate! Brancas vencem.';draw();return;}
- makeMove(state,bestMove.r,bestMove.c,bestMove.tr,bestMove.tc);
- checkGameState();
- turn='white';
+ if(p!="."&&isWhite(p)){
+  selected={r,c};
+  cell.classList.add("selected");
+  showHints(r,c,p);
+ }
+}
+
+function clearSelection(){
+ document.querySelectorAll(".cell").forEach(c=>c.classList.remove("selected","hint"));
+ selected=null;
+}
+
+function showHints(r,c,p){
+ for(let tr=0;tr<8;tr++)
+  for(let tc=0;tc<8;tc++)
+   if(isValidMove(board,p,r,c,tr,tc))
+    boardEl.children[tr*8+tc].classList.add("hint");
+}
+
+/* ================= MOVES ================= */
+function makeMove(b,fr,fc,tr,tc,real=false){
+ const p=b[fr][fc];b[fr][fc]=".";b[tr][tc]=p;
+
+ // promoção
+ if(p==="P"&&tr===0&&real) b[tr][tc]=choosePromotion(true);
+ if(p==="p"&&tr===7&&real) b[tr][tc]=choosePromotion(false);
+
+ lastMove={p,fr,fc,tr,tc};
+}
+
+function choosePromotion(isW){
+ let c=prompt("Promoção: Q, R, B ou N","Q").toUpperCase();
+ if(!["Q","R","B","N"].includes(c))c="Q";
+ return isW?c:c.toLowerCase();
+}
+
+function postMove(){
+ checkMate();
+ if(!gameOver){turn="black";setTimeout(aiMove,200);}
  draw();
 }
 
-/* ================= REGRAS ================= */
-function validMove(s,p,fr,fc,tr,tc,attack=false){if(fr===tr&&fc===tc)return false;const dr=tr-fr,dc=tc-fc;const t=s[tr][tc];if(!attack&&t!=='.'&&isWhite(t)===isWhite(p))return false;
- switch(p.toLowerCase()){
-  case 'p':{const d=isWhite(p)?-1:1;
-   if(dc===0&&t==='.'&&dr===d)return true;
-   if(dc===0&&t==='.'&&dr===2*d&&((isWhite(p)&&fr===6)||(!isWhite(p)&&fr===1))&&s[fr+d][fc]==='.')return true;
-   if(Math.abs(dc)===1&&dr===d&&(t!=='.'||(lastMove&&lastMove.p.toLowerCase()==='p'&&Math.abs(lastMove.tr-lastMove.fr)===2&&lastMove.tr===fr&&lastMove.tc===tc)))return true;
-   return false;}
-  case 'r':return (dr===0||dc===0)&&pathClear(s,fr,fc,tr,tc);
-  case 'b':return Math.abs(dr)===Math.abs(dc)&&pathClear(s,fr,fc,tr,tc);
-  case 'q':return (dr===0||dc===0||Math.abs(dr)===Math.abs(dc))&&pathClear(s,fr,fc,tr,tc);
-  case 'n':return (Math.abs(dr)===2&&Math.abs(dc)===1)||(Math.abs(dr)===1&&Math.abs(dc)===2);
-  case 'k':{
-   if(Math.abs(dr)<=1&&Math.abs(dc)<=1)return true;
-   if(!attack&&dr===0&&Math.abs(dc)===2&&!inCheck(s,isWhite(p))){
-    if(dc>0&&!moved[p]&&!moved[isWhite(p)?'Rh':'rh']&&pathClear(s,fr,fc,tr,7))return true;
-    if(dc<0&&!moved[p]&&!moved[isWhite(p)?'Ra':'ra']&&pathClear(s,fr,0,tr,fc))return true;}
-   return false;}
+/* ================= AI MINIMAX ================= */
+function aiMove(){
+ let best=-999999,move=null;
+ forEachMove(board,false,(nb,m)=>{
+  const score=minimax(nb,4,true,-1e9,1e9);
+  if(score>best){best=score;move=m;}
+ });
+ if(!move){msgEl.textContent="Xeque-mate! Brancas vencem.";gameOver=true;return;}
+ makeMove(board,move.fr,move.fc,move.tr,move.tc,true);
+ turn="white";checkMate();draw();
+}
+
+function minimax(b,d,max,a,beta){
+ if(d===0)return evaluate(b);
+ let best=max?-1e9:1e9;
+ forEachMove(b,max,(nb)=>{
+  const v=minimax(nb,d-1,!max,a,beta);
+  best=max?Math.max(best,v):Math.min(best,v);
+  max?(a=Math.max(a,best)):(beta=Math.min(beta,best));
+  if(beta<=a)return best;
+ });
+ return best;
+}
+
+function forEachMove(b,isW,cb){
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  const p=b[r][c];
+  if(p!="."&&isWhite(p)==isW)
+   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++)
+    if(isValidMove(b,p,r,c,tr,tc)){
+     const nb=b.map(r=>r.slice());
+     makeMove(nb,r,c,tr,tc);
+     cb(nb,{fr:r,fc:c,tr,tc});
+    }
  }
- return false;}
+}
 
-function checkGameState(){if(inCheck(state,false)){if(!hasLegalMoves(false)){gameOver=true;msgEl.textContent='Xeque-mate! Brancas vencem.';}else msgEl.textContent='Xeque nas pretas!';return;}if(!hasLegalMoves(false)){gameOver=true;msgEl.textContent='Empate por afogamento.';}}
+/* ================= EVAL ================= */
+const pieceVal={p:100,n:320,b:330,r:500,q:900,k:0};
+function evaluate(b){
+ let s=0;
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  const p=b[r][c];
+  if(p!=".") s+=(isWhite(p)?-1:1)*pieceVal[p.toLowerCase()];
+ }
+ return s;
+}
 
-function resetGame(){state=cloneState(initialState);turn='white';selected=null;lastMove=null;gameOver=false;logEl.innerHTML='';msgEl.textContent='';draw();}
+/* ================= RULES ================= */
+function isValidMove(b,p,fr,fc,tr,tc){
+ if(fr===tr&&fc===tc)return false;
+ const t=b[tr][tc];
+ if(t!="."&&isWhite(t)==isWhite(p))return false;
+ const dr=tr-fr,dc=tc-fc;
+ switch(p.toLowerCase()){
+  case"p":{
+   const d=isWhite(p)?-1:1;
+   if(dc===0&&t==="."&&dr===d)return true;
+   if(Math.abs(dc)===1&&dr===d&&t!=".")return true;
+   return false;
+  }
+  case"r":return dr===0||dc===0;
+  case"b":return Math.abs(dr)===Math.abs(dc);
+  case"q":return dr===0||dc===0||Math.abs(dr)===Math.abs(dc);
+  case"n":return (Math.abs(dr)==2&&Math.abs(dc)==1)||(Math.abs(dr)==1&&Math.abs(dc)==2);
+  case"k":return Math.abs(dr)<=1&&Math.abs(dc)<=1;
+ }
+ return false;
+}
 
+/* ================= CHECK ================= */
+function checkMate(){
+ let w=false,bk=false;
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  if(board[r][c]==="K")w=true;
+  if(board[r][c]==="k")bk=true;
+ }
+ if(!bk){msgEl.textContent="Xeque-mate! Brancas vencem.";gameOver=true;}
+ if(!w){msgEl.textContent="Xeque-mate! Pretas vencem.";gameOver=true;}
+}
+
+/* ================= START ================= */
 resetGame();
 </script>
 </body>
