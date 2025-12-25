@@ -2,195 +2,193 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Xadrez IA Avançada</title>
-
+<title>Xadrez Minimax</title>
 <style>
-body{
-  background:#222;color:#fff;font-family:Arial;
-  display:flex;flex-direction:column;align-items:center;
-  justify-content:center;min-height:100vh
+body {
+  background:#222;
+  color:white;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  font-family:Arial;
 }
-.board{
+
+#board {
   display:grid;
-  grid-template-columns:repeat(8,64px);
-  grid-template-rows:repeat(8,64px);
-  border:4px solid #000
+  grid-template-columns:repeat(8,70px);
+  grid-template-rows:repeat(8,70px);
+  border:4px solid #000;
+  margin-top:20px;
 }
-.cell{
-  width:64px;height:64px;
-  display:flex;align-items:center;justify-content:center;
-  position:relative;cursor:pointer;
-  font-size:40px;
+
+.cell {
+  width:70px;
+  height:70px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:44px;
+  cursor:pointer;
+  position:relative;
 }
-.white{background:#f0d9b5}
-.black{background:#b58863}
-.cell img{
-  width:52px;height:52px;pointer-events:none;
+
+.white { background:#f0d9b5; }
+.black { background:#b58863; }
+
+.dot {
+  width:18px;
+  height:18px;
+  background:rgba(0,0,0,0.4);
+  border-radius:50%;
+  position:absolute;
 }
-.selected{outline:3px solid red}
-.hint::after{
-  content:"";width:16px;height:16px;border-radius:50%;
-  background:rgba(0,0,0,.35);position:absolute
+
+.selected {
+  outline:4px solid red;
 }
-.msg{margin:8px;font-size:18px}
-button{margin-top:8px;padding:6px 14px}
+
+#info { margin-top:15px; }
+button { margin-top:10px; padding:8px 14px; }
 </style>
 </head>
 
 <body>
-<div class="msg" id="msg"></div>
-<div class="board" id="board"></div>
+
+<h1>Xadrez ♟️</h1>
+<div id="board"></div>
+<div id="info"></div>
 <button onclick="resetGame()">Reiniciar</button>
 
 <script>
-/* ===== PEÇAS ===== */
-const images={
- p:"peao1.png", r:"torre1.png", n:"cavalo1.png",
- b:"bispo1.png", q:"rainha1.png", k:"rei1.png",
- P:"peao2.png", R:"torre2.png", N:"cavalo2.png",
- B:"bispo2.png", Q:"rainha2.png", K:"rei2.png"
+const PIECES = {
+  r:"♜", n:"♞", b:"♝", q:"♛", k:"♚", p:"♟",
+  R:"♖", N:"♘", B:"♗", Q:"♕", K:"♔", P:"♙"
 };
 
-const symbols={
- p:"♟", r:"♜", n:"♞", b:"♝", q:"♛", k:"♚",
- P:"♙", R:"♖", N:"♘", B:"♗", Q:"♕", K:"♔"
-};
+let board, turn, selected, legalMoves;
 
-const start=[
-"rnbqkbnr",
-"pppppppp",
-"........",
-"........",
-"........",
-"........",
-"PPPPPPPP",
-"RNBQKBNR"
-].map(r=>r.split(""));
-
-let board,turn="white",selected=null,gameOver=false;
-const boardEl=document.getElementById("board");
-const msgEl=document.getElementById("msg");
-const isWhite=p=>p>="A"&&p<="Z";
-
-/* ===== INIT ===== */
-function resetGame(){
- board=start.map(r=>r.slice());
- turn="white";selected=null;gameOver=false;
- msgEl.textContent="";
- draw();
+function resetGame() {
+  board = [
+    "rnbqkbnr",
+    "pppppppp",
+    "........",
+    "........",
+    "........",
+    "........",
+    "PPPPPPPP",
+    "RNBQKBNR"
+  ].map(r=>r.split(""));
+  turn = "white";
+  selected = null;
+  legalMoves = [];
+  draw();
+  info("Sua vez");
 }
 
-/* ===== DRAW ===== */
-function draw(){
- boardEl.innerHTML="";
- for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-  const cell=document.createElement("div");
-  cell.className="cell "+((r+c)%2?"black":"white");
-  cell.dataset.r=r;cell.dataset.c=c;
-
-  const p=board[r][c];
-  if(p!="."){
-   const img=new Image();
-   img.src=images[p];
-   img.onerror=()=>{cell.textContent=symbols[p];};
-   img.onload=()=>cell.appendChild(img);
+function draw() {
+  const b = document.getElementById("board");
+  b.innerHTML="";
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const d=document.createElement("div");
+    d.className="cell "+((r+c)%2?"black":"white");
+    const p=board[r][c];
+    if(p!=".") d.textContent=PIECES[p];
+    d.onclick=()=>click(r,c);
+    if(selected && selected.r===r && selected.c===c)
+      d.classList.add("selected");
+    legalMoves.forEach(m=>{
+      if(m.r===r && m.c===c){
+        const dot=document.createElement("div");
+        dot.className="dot";
+        d.appendChild(dot);
+      }
+    });
+    b.appendChild(d);
   }
-
-  cell.onclick=()=>clickCell(cell);
-  boardEl.appendChild(cell);
- }
 }
 
-/* ===== CLICK ===== */
-function clickCell(cell){
- if(gameOver||turn!=="white")return;
- const r=+cell.dataset.r,c=+cell.dataset.c;
- const p=board[r][c];
-
- clearHints();
-
- if(selected){
-  const {r:fr,c:fc}=selected;
-  if(valid(board[fr][fc],fr,fc,r,c)){
-   move(fr,fc,r,c);
-   selected=null;
-   turn="black";
-   setTimeout(aiMove,300);
-   return;
-  }
-  selected=null;
- }
-
- if(p!="."&&isWhite(p)){
-  selected={r,c};
-  cell.classList.add("selected");
-  showHints(r,c,p);
- }
-}
-
-function clearHints(){
- document.querySelectorAll(".cell").forEach(c=>{
-  c.classList.remove("selected","hint");
- });
-}
-
-/* ===== MOVES ===== */
-function move(fr,fc,tr,tc){
- board[tr][tc]=board[fr][fc];
- board[fr][fc]=".";
- draw();
-}
-
-/* ===== HINTS ===== */
-function showHints(r,c,p){
- for(let tr=0;tr<8;tr++)
-  for(let tc=0;tc<8;tc++)
-   if(valid(p,r,c,tr,tc))
-    boardEl.children[tr*8+tc].classList.add("hint");
-}
-
-/* ===== IA SIMPLES (base minimax depois) ===== */
-function aiMove(){
- for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+function click(r,c){
+  if(turn!=="white")return;
   const p=board[r][c];
-  if(p!="."&&!isWhite(p)){
-   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
-    if(valid(p,r,c,tr,tc)){
-     move(r,c,tr,tc);
-     turn="white";
-     return;
+  if(selected){
+    if(legalMoves.some(m=>m.r===r&&m.c===c)){
+      move(selected.r,selected.c,r,c);
+      turn="black";
+      draw();
+      setTimeout(aiMove,300);
     }
-   }
+    selected=null;
+    legalMoves=[];
+  } else if(p!="." && p===p.toUpperCase()){
+    selected={r,c};
+    legalMoves=genMoves(r,c);
   }
- }
+  draw();
 }
 
-/* ===== REGRAS ===== */
-function valid(p,fr,fc,tr,tc){
- if(fr===tr&&fc===tc)return false;
- const t=board[tr][tc];
- if(t!="."&&isWhite(t)===isWhite(p))return false;
-
- const dr=tr-fr,dc=tc-fc;
- switch(p.toLowerCase()){
-  case"p":{
-   const d=isWhite(p)?-1:1;
-   if(dc===0&&t==="."&&dr===d)return true;
-   if(Math.abs(dc)===1&&dr===d&&t!=".")return true;
-   return false;
+function move(r1,c1,r2,c2){
+  board[r2][c2]=board[r1][c1];
+  board[r1][c1]=".";
+  // promoção
+  if(board[r2][c2]==="P" && r2===0){
+    const choice=prompt("Promover para Q,R,B,N","Q");
+    board[r2][c2]=choice||"Q";
   }
-  case"r":return dr===0||dc===0;
-  case"b":return Math.abs(dr)===Math.abs(dc);
-  case"q":return dr===0||dc===0||Math.abs(dr)===Math.abs(dc);
-  case"n":return (Math.abs(dr)==2&&Math.abs(dc)==1)||(Math.abs(dr)==1&&Math.abs(dc)==2);
-  case"k":return Math.abs(dr)<=1&&Math.abs(dc)<=1;
- }
- return false;
 }
 
-/* ===== START ===== */
+function genMoves(r,c){
+  const p=board[r][c];
+  const moves=[];
+  const dir=p==="P"?-1:1;
+  if(p.toLowerCase()==="p"){
+    if(board[r+dir]?.[c]===".") moves.push({r:r+dir,c});
+    [-1,1].forEach(dc=>{
+      if(board[r+dir]?.[c+dc] && board[r+dir][c+dc]!=".")
+        moves.push({r:r+dir,c:c+dc});
+    });
+  }
+  return moves;
+}
+
+function aiMove(){
+  let best=null;
+  let bestScore=-9999;
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    if(board[r][c]===board[r][c].toLowerCase()){
+      genMoves(r,c).forEach(m=>{
+        const captured=board[m.r][m.c];
+        board[m.r][m.c]=board[r][c];
+        board[r][c]=".";
+        const score=evaluate();
+        board[r][c]=board[m.r][m.c];
+        board[m.r][m.c]=captured;
+        if(score>bestScore){
+          bestScore=score;
+          best={r,c,m};
+        }
+      });
+    }
+  }
+  if(best){
+    move(best.r,best.c,best.m.r,best.m.c);
+    turn="white";
+    draw();
+  }
+}
+
+function evaluate(){
+  const val={p:1,n:3,b:3,r:5,q:9,k:100};
+  let s=0;
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const p=board[r][c];
+    if(p!=".") s+=(p===p.toLowerCase()?1:-1)*val[p.toLowerCase()];
+  }
+  return s;
+}
+
+function info(t){document.getElementById("info").textContent=t;}
+
 resetGame();
 </script>
 </body>
 </html>
-
