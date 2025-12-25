@@ -19,11 +19,14 @@ body{
 .cell{
   width:64px;height:64px;
   display:flex;align-items:center;justify-content:center;
-  position:relative;cursor:pointer
+  position:relative;cursor:pointer;
+  font-size:40px;
 }
 .white{background:#f0d9b5}
 .black{background:#b58863}
-.cell img{width:52px;height:52px;pointer-events:none}
+.cell img{
+  width:52px;height:52px;pointer-events:none;
+}
 .selected{outline:3px solid red}
 .hint::after{
   content:"";width:16px;height:16px;border-radius:50%;
@@ -40,7 +43,7 @@ button{margin-top:8px;padding:6px 14px}
 <button onclick="resetGame()">Reiniciar</button>
 
 <script>
-/* ================= CONFIG ================= */
+/* ===== PEÇAS ===== */
 const images={
  p:"peao1.png", r:"torre1.png", n:"cavalo1.png",
  b:"bispo1.png", q:"rainha1.png", k:"rei1.png",
@@ -48,54 +51,76 @@ const images={
  B:"bispo2.png", Q:"rainha2.png", K:"rei2.png"
 };
 
-const initial=[
-"rnbqkbnr","pppppppp","........","........",
-"........","........","PPPPPPPP","RNBQKBNR"
+const symbols={
+ p:"♟", r:"♜", n:"♞", b:"♝", q:"♛", k:"♚",
+ P:"♙", R:"♖", N:"♘", B:"♗", Q:"♕", K:"♔"
+};
+
+const start=[
+"rnbqkbnr",
+"pppppppp",
+"........",
+"........",
+"........",
+"........",
+"PPPPPPPP",
+"RNBQKBNR"
 ].map(r=>r.split(""));
 
-let board,turn,selected,lastMove,gameOver;
+let board,turn="white",selected=null,gameOver=false;
 const boardEl=document.getElementById("board");
 const msgEl=document.getElementById("msg");
 const isWhite=p=>p>="A"&&p<="Z";
 
-/* ================= INIT ================= */
+/* ===== INIT ===== */
 function resetGame(){
- board=initial.map(r=>r.slice());
- turn="white";selected=null;lastMove=null;gameOver=false;
- msgEl.textContent="";draw();
+ board=start.map(r=>r.slice());
+ turn="white";selected=null;gameOver=false;
+ msgEl.textContent="";
+ draw();
 }
 
-/* ================= DRAW ================= */
+/* ===== DRAW ===== */
 function draw(){
  boardEl.innerHTML="";
  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
   const cell=document.createElement("div");
   cell.className="cell "+((r+c)%2?"black":"white");
   cell.dataset.r=r;cell.dataset.c=c;
+
   const p=board[r][c];
   if(p!="."){
-   const img=document.createElement("img");
-   img.src=images[p];cell.appendChild(img);
+   const img=new Image();
+   img.src=images[p];
+   img.onerror=()=>{cell.textContent=symbols[p];};
+   img.onload=()=>cell.appendChild(img);
   }
+
   cell.onclick=()=>clickCell(cell);
   boardEl.appendChild(cell);
  }
 }
 
-/* ================= CLICK ================= */
+/* ===== CLICK ===== */
 function clickCell(cell){
  if(gameOver||turn!=="white")return;
  const r=+cell.dataset.r,c=+cell.dataset.c;
  const p=board[r][c];
 
+ clearHints();
+
  if(selected){
   const {r:fr,c:fc}=selected;
-  if(isValidMove(board,board[fr][fc],fr,fc,r,c)){
-   makeMove(board,fr,fc,r,c,true);
-   clearSelection();postMove();return;
+  if(valid(board[fr][fc],fr,fc,r,c)){
+   move(fr,fc,r,c);
+   selected=null;
+   turn="black";
+   setTimeout(aiMove,300);
+   return;
   }
-  clearSelection();
+  selected=null;
  }
+
  if(p!="."&&isWhite(p)){
   selected={r,c};
   cell.classList.add("selected");
@@ -103,94 +128,49 @@ function clickCell(cell){
  }
 }
 
-function clearSelection(){
- document.querySelectorAll(".cell").forEach(c=>c.classList.remove("selected","hint"));
- selected=null;
+function clearHints(){
+ document.querySelectorAll(".cell").forEach(c=>{
+  c.classList.remove("selected","hint");
+ });
 }
 
-function showHints(r,c,p){
- for(let tr=0;tr<8;tr++)
-  for(let tc=0;tc<8;tc++)
-   if(isValidMove(board,p,r,c,tr,tc))
-    boardEl.children[tr*8+tc].classList.add("hint");
-}
-
-/* ================= MOVES ================= */
-function makeMove(b,fr,fc,tr,tc,real=false){
- const p=b[fr][fc];b[fr][fc]=".";b[tr][tc]=p;
-
- // promoção
- if(p==="P"&&tr===0&&real) b[tr][tc]=choosePromotion(true);
- if(p==="p"&&tr===7&&real) b[tr][tc]=choosePromotion(false);
-
- lastMove={p,fr,fc,tr,tc};
-}
-
-function choosePromotion(isW){
- let c=prompt("Promoção: Q, R, B ou N","Q").toUpperCase();
- if(!["Q","R","B","N"].includes(c))c="Q";
- return isW?c:c.toLowerCase();
-}
-
-function postMove(){
- checkMate();
- if(!gameOver){turn="black";setTimeout(aiMove,200);}
+/* ===== MOVES ===== */
+function move(fr,fc,tr,tc){
+ board[tr][tc]=board[fr][fc];
+ board[fr][fc]=".";
  draw();
 }
 
-/* ================= AI MINIMAX ================= */
+/* ===== HINTS ===== */
+function showHints(r,c,p){
+ for(let tr=0;tr<8;tr++)
+  for(let tc=0;tc<8;tc++)
+   if(valid(p,r,c,tr,tc))
+    boardEl.children[tr*8+tc].classList.add("hint");
+}
+
+/* ===== IA SIMPLES (base minimax depois) ===== */
 function aiMove(){
- let best=-999999,move=null;
- forEachMove(board,false,(nb,m)=>{
-  const score=minimax(nb,4,true,-1e9,1e9);
-  if(score>best){best=score;move=m;}
- });
- if(!move){msgEl.textContent="Xeque-mate! Brancas vencem.";gameOver=true;return;}
- makeMove(board,move.fr,move.fc,move.tr,move.tc,true);
- turn="white";checkMate();draw();
-}
-
-function minimax(b,d,max,a,beta){
- if(d===0)return evaluate(b);
- let best=max?-1e9:1e9;
- forEachMove(b,max,(nb)=>{
-  const v=minimax(nb,d-1,!max,a,beta);
-  best=max?Math.max(best,v):Math.min(best,v);
-  max?(a=Math.max(a,best)):(beta=Math.min(beta,best));
-  if(beta<=a)return best;
- });
- return best;
-}
-
-function forEachMove(b,isW,cb){
  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-  const p=b[r][c];
-  if(p!="."&&isWhite(p)==isW)
-   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++)
-    if(isValidMove(b,p,r,c,tr,tc)){
-     const nb=b.map(r=>r.slice());
-     makeMove(nb,r,c,tr,tc);
-     cb(nb,{fr:r,fc:c,tr,tc});
+  const p=board[r][c];
+  if(p!="."&&!isWhite(p)){
+   for(let tr=0;tr<8;tr++)for(let tc=0;tc<8;tc++){
+    if(valid(p,r,c,tr,tc)){
+     move(r,c,tr,tc);
+     turn="white";
+     return;
     }
+   }
+  }
  }
 }
 
-/* ================= EVAL ================= */
-const pieceVal={p:100,n:320,b:330,r:500,q:900,k:0};
-function evaluate(b){
- let s=0;
- for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-  const p=b[r][c];
-  if(p!=".") s+=(isWhite(p)?-1:1)*pieceVal[p.toLowerCase()];
- }
- return s;
-}
-
-/* ================= RULES ================= */
-function isValidMove(b,p,fr,fc,tr,tc){
+/* ===== REGRAS ===== */
+function valid(p,fr,fc,tr,tc){
  if(fr===tr&&fc===tc)return false;
- const t=b[tr][tc];
- if(t!="."&&isWhite(t)==isWhite(p))return false;
+ const t=board[tr][tc];
+ if(t!="."&&isWhite(t)===isWhite(p))return false;
+
  const dr=tr-fr,dc=tc-fc;
  switch(p.toLowerCase()){
   case"p":{
@@ -208,19 +188,9 @@ function isValidMove(b,p,fr,fc,tr,tc){
  return false;
 }
 
-/* ================= CHECK ================= */
-function checkMate(){
- let w=false,bk=false;
- for(let r=0;r<8;r++)for(let c=0;c<8;c++){
-  if(board[r][c]==="K")w=true;
-  if(board[r][c]==="k")bk=true;
- }
- if(!bk){msgEl.textContent="Xeque-mate! Brancas vencem.";gameOver=true;}
- if(!w){msgEl.textContent="Xeque-mate! Pretas vencem.";gameOver=true;}
-}
-
-/* ================= START ================= */
+/* ===== START ===== */
 resetGame();
 </script>
 </body>
 </html>
+
